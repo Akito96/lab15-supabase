@@ -1,6 +1,7 @@
 import SwiftUI
 import Supabase
 import CoreLocation
+import Combine
 
 // =====================================================================
 // Инициализация клиента Supabase для Темы 15
