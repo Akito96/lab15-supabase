@@ -654,7 +654,8 @@ struct SendPackageTabView: View {
                     }
                     .font(.headline)
                     .foregroundColor(.white)
-                    .frame(maxWidth: .infinity, height: 44)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 44)
                     .background(Color(hex: "0560FA"))
                     .cornerRadius(6)
                 }
