@@ -11,7 +11,7 @@ let supabase = SupabaseClient(
 )
 
 // =====================================================================
-// 2. Модели данных для таблиц 'users' и 'packages'
+// 2. Модель данных пользователя для таблицы 'users'
 // (Модель Country находится в файле Country.swift)
 // =====================================================================
 struct UserModel: Codable, Identifiable {
@@ -21,21 +21,8 @@ struct UserModel: Codable, Identifiable {
     var created_at: Date
 }
 
-struct PackagePayload: Encodable {
-    let id: String
-    let address: String
-    let state_country: String
-    let phone_number: Int64
-    let package_item: String
-    let weight_of_item: String
-    let worth_of_items: String
-    let delivery_type: String
-    let is_active: Bool
-    let user_id: UUID
-}
-
 // =====================================================================
-// 3. Главный экран приложения (TabView по заданиям лабы)
+// 3. Главный экран приложения
 // =====================================================================
 struct ContentView: View {
     @State private var currentUser: UserModel? = nil
@@ -51,11 +38,6 @@ struct ContentView: View {
                 .tabItem {
                     Label("Аккаунт", systemImage: "person.circle")
                 }
-
-            SendPackageView(currentUser: currentUser)
-                .tabItem {
-                    Label("Посылка", systemImage: "shippingbox")
-                }
         }
     }
 }
@@ -70,30 +52,50 @@ struct CountriesView: View {
 
     var body: some View {
         NavigationView {
-            List(countries) { country in
-                HStack {
-                    Text("\(country.id).")
-                        .foregroundColor(.secondary)
-                    Text(country.name)
-                        .fontWeight(.medium)
-                }
-            }
-            .navigationTitle("Страны")
-            .overlay {
+            Group {
                 if isLoading && countries.isEmpty {
-                    ProgressView("Загрузка...")
+                    VStack(spacing: 12) {
+                        ProgressView()
+                        Text("Загрузка стран...")
+                            .foregroundColor(.secondary)
+                    }
                 } else if !errorMessage.isEmpty {
-                    VStack(spacing: 8) {
-                        Text("Ошибка: \(errorMessage)")
+                    VStack(spacing: 12) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 40))
+                            .foregroundColor(.orange)
+                        Text(errorMessage)
                             .font(.caption)
                             .foregroundColor(.red)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
                         Button("Повторить") {
                             Task { await fetchCountries() }
                         }
+                        .buttonStyle(.borderedProminent)
                     }
                     .padding()
+                } else if countries.isEmpty {
+                    VStack(spacing: 12) {
+                        Text("В таблице countries нет записей")
+                            .foregroundColor(.secondary)
+                        Button("Обновить") {
+                            Task { await fetchCountries() }
+                        }
+                    }
+                } else {
+                    List(countries) { country in
+                        HStack {
+                            Text("\(country.id).")
+                                .foregroundColor(.secondary)
+                                .frame(width: 30, alignment: .leading)
+                            Text(country.name)
+                                .fontWeight(.medium)
+                        }
+                    }
                 }
             }
+            .navigationTitle("Страны")
             .refreshable {
                 await fetchCountries()
             }
@@ -105,14 +107,17 @@ struct CountriesView: View {
 
     func fetchCountries() async {
         isLoading = true
+        errorMessage = ""
         do {
+            print("--> Запрос стран из Supabase...")
             countries = try await supabase
                 .from("countries")
                 .select()
                 .execute()
                 .value
-            errorMessage = ""
+            print("--> Загружено стран: \(countries.count)")
         } catch {
+            print("--> Ошибка Supabase: \(error)")
             errorMessage = error.localizedDescription
         }
         isLoading = false
@@ -267,98 +272,7 @@ struct AuthView: View {
     }
 }
 
-// =====================================================================
-// Задание 3: Оформление посылки (Send a package)
-// =====================================================================
-struct SendPackageView: View {
-    let currentUser: UserModel?
-
-    @State private var address = "ул. Ленина, д. 10"
-    @State private var stateCountry = "Москва, Россия"
-    @State private var phone = "+7 999 123 45 67"
-
-    @State private var packageItem = "Документы и книги"
-    @State private var weight = "2.5 кг"
-    @State private var worth = "1500 руб"
-
-    @State private var alertMessage = ""
-    @State private var showAlert = false
-    @State private var isSubmitting = false
-
-    var body: some View {
-        NavigationView {
-            Form {
-                Section("Пункт отправления") {
-                    TextField("Адрес", text: $address)
-                    TextField("Город, страна", text: $stateCountry)
-                    TextField("Телефон", text: $phone)
-                }
-
-                Section("Данные посылки") {
-                    TextField("Содержимое", text: $packageItem)
-                    TextField("Вес", text: $weight)
-                    TextField("Ценность", text: $worth)
-                }
-
-                Section {
-                    Button(action: sendPackage) {
-                        if isSubmitting {
-                            ProgressView()
-                        } else {
-                            Text("Отправить посылку (Instant delivery)")
-                                .frame(maxWidth: .infinity)
-                        }
-                    }
-                    .disabled(isSubmitting)
-                }
-            }
-            .navigationTitle("Send a package")
-            .alert("Отправка посылки", isPresented: $showAlert) {
-                Button("OK", role: .cancel) { }
-            } message: {
-                Text(alertMessage)
-            }
-        }
-    }
-
-    func sendPackage() {
-        let trackNumber = "R-\(UUID().uuidString.prefix(6).uppercased())"
-        let cleanPhone = Int64(phone.filter { $0.isNumber }) ?? 79991234567
-        let userId = currentUser?.id ?? UUID()
-
-        let payload = PackagePayload(
-            id: trackNumber,
-            address: address,
-            state_country: stateCountry,
-            phone_number: cleanPhone,
-            package_item: packageItem,
-            weight_of_item: weight,
-            worth_of_items: worth,
-            delivery_type: "Instant delivery",
-            is_active: true,
-            user_id: userId
-        )
-
-        isSubmitting = true
-        Task {
-            do {
-                try await supabase.from("packages").insert(payload).execute()
-                await MainActor.run {
-                    self.alertMessage = "Посылка оформлена! Трек-номер: \(trackNumber)"
-                    self.showAlert = true
-                    self.isSubmitting = false
-                }
-            } catch {
-                await MainActor.run {
-                    self.alertMessage = "Ошибка отправки: \(error.localizedDescription)"
-                    self.showAlert = true
-                    self.isSubmitting = false
-                }
-            }
-        }
-    }
-}
-
 #Preview {
     ContentView()
 }
+
